@@ -9,6 +9,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDraggable,
+  useDroppable,
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 
@@ -60,8 +62,8 @@ export function ScheduleGrid({ onEditSlot, onAddSlot }: ScheduleGridProps) {
     return `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
   };
 
-  const getSlotForCell = (day: number, timeIndex: number): TimeSlot | undefined => {
-    return timeSlots.find(
+  const getSlotsForCell = (day: number, timeIndex: number): TimeSlot[] => {
+    return timeSlots.filter(
       slot => slot.day === day && slot.startTime === config.timeSlots[timeIndex]
     );
   };
@@ -106,18 +108,17 @@ export function ScheduleGrid({ onEditSlot, onAddSlot }: ScheduleGridProps) {
                       {time}
                     </td>
                     {config.daysOfWeek.map((_, dayIndex) => {
-                      const slot = getSlotForCell(dayIndex, timeIndex);
-                      const subject = slot ? getSubject(slot.subjectId) : undefined;
+                      const slots = getSlotsForCell(dayIndex, timeIndex);
                       const cellId = `cell-${dayIndex}-${timeIndex}`;
 
                       return (
                         <DroppableCell
                           key={cellId}
                           id={cellId}
-                          slot={slot}
-                          subject={subject}
-                          onEdit={() => slot && onEditSlot?.(slot)}
-                          onDelete={() => slot && deleteTimeSlot(slot.id)}
+                          slots={slots}
+                          subjects={subjects}
+                          onEdit={onEditSlot}
+                          onDelete={deleteTimeSlot}
                           onAdd={() => onAddSlot?.(dayIndex, timeIndex)}
                         />
                       );
@@ -149,39 +150,61 @@ export function ScheduleGrid({ onEditSlot, onAddSlot }: ScheduleGridProps) {
 
 interface DroppableCellProps {
   id: string;
-  slot?: TimeSlot;
-  subject?: Subject;
-  onEdit: () => void;
-  onDelete: () => void;
+  slots: TimeSlot[];
+  subjects: Subject[];
+  onEdit?: (slot: TimeSlot) => void;
+  onDelete: (id: string) => void;
   onAdd: () => void;
 }
 
-function DroppableCell({ id, slot, subject, onEdit, onDelete, onAdd }: DroppableCellProps) {
-  const [isHovered, setIsHovered] = useState(false);
+function DroppableCell({ id, slots, subjects, onEdit, onDelete, onAdd }: DroppableCellProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: id,
+  });
+
+  const getSubject = (subjectId: string | null): Subject | undefined => {
+    return subjects.find(s => s.id === subjectId);
+  };
 
   return (
     <td
-      id={id}
-      className="border border-gray-200 p-1 min-h-[80px] relative group"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      ref={setNodeRef}
+      className={`border border-gray-200 p-1 min-h-[80px] relative group ${
+        isOver ? 'bg-blue-50 ring-2 ring-blue-400' : ''
+      }`}
     >
-      {slot && subject ? (
-        <DraggableSlot
-          slot={slot}
-          subject={subject}
-          isHovered={isHovered}
-          onEdit={onEdit}
-          onDelete={onDelete}
-        />
-      ) : (
-        <button
-          onClick={onAdd}
-          className="w-full h-full min-h-[80px] flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all rounded"
-        >
-          <Plus size={24} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-        </button>
-      )}
+      <div className="flex flex-col gap-1 min-h-[80px]">
+        {slots.length > 0 ? (
+          slots.map((slot) => {
+            const subject = getSubject(slot.subjectId);
+            return subject ? (
+              <DraggableSlot
+                key={slot.id}
+                slot={slot}
+                subject={subject}
+                onEdit={() => onEdit?.(slot)}
+                onDelete={() => onDelete(slot.id)}
+              />
+            ) : null;
+          })
+        ) : (
+          <button
+            onClick={onAdd}
+            className="w-full h-full min-h-[80px] flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all rounded"
+          >
+            <Plus size={24} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        )}
+        {slots.length > 0 && (
+          <button
+            onClick={onAdd}
+            className="w-full py-1 text-xs text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all rounded flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100"
+          >
+            <Plus size={14} />
+            Ajouter
+          </button>
+        )}
+      </div>
     </td>
   );
 }
@@ -189,23 +212,38 @@ function DroppableCell({ id, slot, subject, onEdit, onDelete, onAdd }: Droppable
 interface DraggableSlotProps {
   slot: TimeSlot;
   subject: Subject;
-  isHovered: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-function DraggableSlot({ slot, subject, isHovered, onEdit, onDelete }: DraggableSlotProps) {
+function DraggableSlot({ slot, subject, onEdit, onDelete }: DraggableSlotProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: slot.id,
+  });
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+        opacity: isDragging ? 0.5 : 1,
+      }
+    : undefined;
+
   return (
     <div
-      id={slot.id}
-      className="px-3 py-2 rounded-lg cursor-move transition-all h-full min-h-[80px] relative"
-      style={{ backgroundColor: subject.color }}
+      ref={setNodeRef}
+      style={{ ...style, backgroundColor: subject.color }}
+      {...listeners}
+      {...attributes}
+      className="px-3 py-2 rounded-lg cursor-move transition-all relative touch-none"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <div className="text-white font-medium text-sm">{subject.name}</div>
       {slot.room && <div className="text-white text-xs opacity-90 mt-1">{slot.room}</div>}
       {slot.teacher && <div className="text-white text-xs opacity-90">{slot.teacher}</div>}
 
-      {isHovered && (
+      {isHovered && !isDragging && (
         <div className="absolute top-1 right-1 flex gap-1">
           <button
             onClick={(e) => {

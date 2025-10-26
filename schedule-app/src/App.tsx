@@ -160,10 +160,16 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {activeTab === 'schedule' && (
           <div>
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-gray-600">
-                Glissez-déposez les cours pour les déplacer, ou cliquez sur une case vide pour ajouter un cours.
+            <div className="mb-4 space-y-2">
+              <p className="text-gray-700 font-medium">
+                Comment utiliser l'emploi du temps :
               </p>
+              <ul className="text-gray-600 text-sm space-y-1 list-disc list-inside">
+                <li>Glissez-déposez les cours pour les déplacer</li>
+                <li>Cliquez sur une case vide ou sur "Ajouter" pour ajouter un cours</li>
+                <li>Vous pouvez avoir plusieurs cours dans la même tranche horaire</li>
+                <li>Survolez un cours pour voir les options de modification et suppression</li>
+              </ul>
             </div>
             <ScheduleGrid onEditSlot={handleEditSlot} onAddSlot={handleAddSlot} />
           </div>
